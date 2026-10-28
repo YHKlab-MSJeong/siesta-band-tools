@@ -4,15 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "siesta-band-tools"
-version = "0.1.0"
+version = "0.2.0"
 description = "Read, calculate and plot SIESTA electronic bands"
 requires-python = ">=3.9"
 dependencies = ["numpy>=1.24,<2", "scipy>=1.10,<1.15", "matplotlib>=3.7,<3.10", "sisl==0.14.3"]
 
 [project.scripts]
-siesta-band-plot = "siesta_band_tools.legacy_plot:main"
-siesta-band-calculate = "siesta_band_tools.cli:compute"
-siesta-band-plot-calculated = "siesta_band_tools.cli:plot_computed"
+siesta-band = "siesta_band_tools.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

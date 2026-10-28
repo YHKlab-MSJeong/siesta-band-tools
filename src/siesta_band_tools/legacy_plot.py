@@ -123,13 +123,13 @@ class HelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescript
     pass
 
 
-def build_argument_parser():
+def build_argument_parser(prog='band.py'):
     description = (
         'Make element/orbital-resolved fatband or plain band plots from SIESTA *.bands.WFSX outputs. '
         'Without -s, all spin channels are plotted together in one PNG.'
     )
     parser = argparse.ArgumentParser(
-        prog='band.py',
+        prog=prog,
         description=description,
         formatter_class=HelpFormatter,
         epilog=(
@@ -206,11 +206,12 @@ def build_argument_parser():
     parser.add_argument('--weight-normalization', choices=['none', 'atom', 'cell'],
                         default=WEIGHT_NORMALIZATION,
                         help='normalize weights per selected atom (atom) or all cell atoms (cell); none keeps raw weights')
+    parser.epilog = parser.epilog.replace('python band.py', prog)
     return parser
 
 
 def parse_cli_arguments(arguments):
-    parser = build_argument_parser()
+    parser = build_argument_parser(prog=arguments[0])
     spin_cleaned, spin_option = extract_spin_option(arguments, arguments[0])
     options, plot_args = parser.parse_known_args(spin_cleaned[1:])
     for token in plot_args:
@@ -481,13 +482,13 @@ def parse_band_arguments(arguments):
         print('error : --weight-normalization is only available for fatband plots')
         raise SystemExit(1)
     if len(arguments) < 2:
-        return parse_plot_arguments(arguments, 'band.py')
+        return parse_plot_arguments(arguments, arguments[0])
 
     prefix = 'band' if options.no_fat else 'fatband'
     input_path = Path(arguments[1]).resolve()
     if is_direct_output_dir(input_path):
         parse_args = [arguments[0], str(input_path.parent)] + arguments[2:]
-        _, _, selectors, _ = parse_plot_arguments(parse_args, 'band.py')
+        _, _, selectors, _ = parse_plot_arguments(parse_args, arguments[0])
         if options.no_fat and selectors:
             print('error : --no-fat does not accept element/orbital/position selectors')
             raise SystemExit(1)
@@ -496,7 +497,7 @@ def parse_band_arguments(arguments):
             output_png = append_selector_suffix(output_png, selectors)
         return [(input_path.parent, input_path, output_png)], selectors, spin_option, options.no_fat
 
-    target_dir, case_dirs, selectors, is_single_case = parse_plot_arguments(arguments, 'band.py')
+    target_dir, case_dirs, selectors, is_single_case = parse_plot_arguments(arguments, arguments[0])
     if options.no_fat and selectors:
         print('error : --no-fat does not accept element/orbital/position selectors')
         raise SystemExit(1)
@@ -614,9 +615,11 @@ def process_case(case_dir, output_dir, output_png, selectors, spin_option, no_fa
     return 'done', None
 
 
-def main():
+def main(arguments=None, *, prog='band.py'):
     # Make band plots from WFSX outputs with optional fatband element/orbital selection.
-    jobs, selectors, spin_option, no_fat = parse_band_arguments(sys.argv)
+    if arguments is None:
+        arguments = sys.argv[1:]
+    jobs, selectors, spin_option, no_fat = parse_band_arguments([prog, *arguments])
     failures = 0
 
     for case_dir, output_dir, output_png in jobs:
