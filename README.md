@@ -133,19 +133,6 @@ print("orbitals:", metadata["norb"])
 print("species:", sorted(set(metadata["symbols"])))
 ```
 
-## Command changes from 0.1
-
-The previous entry points were replaced by the `siesta-band` command:
-
-| Previous command | New command |
-| --- | --- |
-| `siesta-band-calculate` | `siesta-band calculate` |
-| `siesta-band-plot-calculated` | `siesta-band plot` |
-| `siesta-band-plot` | `siesta-band wfsx plot` |
-
-Update existing scripts that use the previous command names. The Python
-functions and NPZ format are unchanged.
-
 Run the small synthetic tests with `python -m unittest discover -s tests -v`.
 The readers and plotting code are adapted from the existing `band.py` and
 associated utility routines. No license has yet been assigned to this code.
