@@ -15,6 +15,12 @@ has been exercised with sisl 0.14.3, NumPy 1.26.4, SciPy 1.14.0 and Matplotlib
 python -m pip install .
 ```
 
+To install directly from GitHub:
+
+```sh
+python -m pip install git+https://github.com/YHKlab-MSJeong/siesta-band-tools.git
+```
+
 ## Plot SIESTA band output
 
 The plotter retains the previous `band.py` selectors and style. Point it at a
@@ -69,6 +75,40 @@ be verified against that calculation's SIESTA source and EIG output.
 TSHS, and `diagonalize` operates on an existing sisl Hamiltonian. These
 interfaces are also intended for local analysis code. No
 unfolding or localization implementation is included here.
+
+For example, read WFSX metadata in your own script:
+
+```python
+from siesta_band_tools.io import read_wfsx_metadata
+
+metadata = read_wfsx_metadata("path/to/model.bands.WFSX")
+print("k-points:", metadata["nk"])
+print("orbitals:", metadata["norb"])
+print("species:", sorted(set(metadata["symbols"])))
+```
+
+To calculate a band path from a TSHS file in your own script:
+
+```python
+from siesta_band_tools.calculation import calculate
+
+result = calculate(
+    "path/to/model.TSHS",
+    vertices=[[0, 0, 0], [0.5, 0, 0]],
+    intervals=[40],
+)
+energy = result["energy_eV"]  # absolute energy, shape (k-points, bands)
+k_distance = result["k_distance_inv_ang"]
+fermi_energy = float(result["fermi_eV"])
+
+print("energy relative to TSHS Fermi level:", energy - fermi_energy)
+```
+
+The example vertices are fractional coordinates in the TSHS supercell's
+reciprocal basis; choose a path for your system. Set
+`legacy_siesta_units=True` only when the SIESTA source uses the legacy
+constants described above. To make a PNG directly from SIESTA outputs, use
+the `siesta-band-plot` commands in the section above.
 
 Run the small synthetic tests with `python -m unittest discover -s tests -v`.
 The readers and plotting code are adapted from the existing `band.py` and
