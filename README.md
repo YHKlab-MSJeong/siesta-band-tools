@@ -110,6 +110,26 @@ reciprocal basis; choose a path for your system. Set
 constants described above. To make a PNG directly from SIESTA outputs, use
 the `siesta-band-plot` commands in the section above.
 
+To draw the calculated energies on your own Matplotlib axes, continue from the
+previous example:
+
+```python
+import matplotlib.pyplot as plt
+from siesta_band_tools.plotting import draw_bands
+
+fig, ax = plt.subplots()
+draw_bands(ax, k_distance, energy, reference_energy=fermi_energy,
+           energy_range=(-2, 2), color="black")
+ax.set_ylim(-2, 2)
+ax.set_ylabel("Energy - Fermi energy (eV)")
+plt.show()
+```
+
+The `siesta_band_tools.data` module also exposes the WFSX band preparation
+functions separately from rendering. `siesta_band_tools.plotting.PlotStyle`,
+`plot_band`, and `plot_fatband` provide the standard PNG style without using
+the command-line plotter's global settings.
+
 Run the small synthetic tests with `python -m unittest discover -s tests -v`.
 The readers and plotting code are adapted from the existing `band.py` and
 associated utility routines. No license has yet been assigned to this code.

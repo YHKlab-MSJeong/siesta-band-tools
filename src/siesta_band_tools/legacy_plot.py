@@ -19,6 +19,9 @@ from scipy.io import FortranFile
 from .io import (normalize_k_label, read_bands_path_data, normalize_orbital_name,
                  read_wfsx_metadata, read_wfsx_series, read_eig_vbm,
                  WFSX_ORBITAL_RECORD, WFSX_BLOCK_HEADER)
+from . import data
+from .data import (read_pdos_atom_positions, read_struct_atom_positions, find_struct_fdf,
+                   build_orbital_info, build_kdist, read_plain_band_data)
 from .util import (
     LMAP,
     find_run_fdf,
@@ -33,6 +36,7 @@ from .util import (
 )
 
 matplotlib.use('Agg')
+from . import plotting
 import matplotlib.pyplot as plt
 
 
@@ -83,6 +87,18 @@ WEIGHT_TOL = 1.0e-4  # Minimum visible orbital weight.
 WEIGHT_NORMALIZATION = 'none'  # Normalize fatband weights per selected atom or cell atom.
 WFSX_ORBITAL_RECORD = struct.Struct('<i20sii20s')
 WFSX_BLOCK_HEADER = struct.Struct('<idddd')
+
+
+def _plot_style():
+    """Snapshot legacy CLI settings for the independent plotting functions."""
+    return plotting.PlotStyle(
+        width=WIDTH, height=HEIGHT, dpi=DPI, energy_range=ENERGY_RANGE,
+        energy_tick_count=ENERGY_TICK_COUNT, marker_scale=MARKER_SCALE, alpha=ALPHA,
+        reference_linewidth=LINEWIDTH, label_size=LABEL_SIZE, tick_size=TICK_SIZE,
+        hide_labels=HIDE_TICK_AND_AXIS_LABELS, show_legend=SHOW_LEGEND,
+        axis_linewidth=AXIS_LINEWIDTH, tick_width=TICK_WIDTH, tick_length=TICK_LENGTH,
+        group_colors=GROUP_COLORS, spin_group_colors=SPIN_GROUP_COLORS, weight_tol=WEIGHT_TOL,
+        base_band_linewidth=BASE_BAND_LINEWIDTH, default_marker_scale=DEFAULT_MARKER_SCALE)
 
 
 def format_default(value):
@@ -302,7 +318,6 @@ def get_spin_indices(nspin, spin_option):
     return [spin_option]
 
 
-
 def read_bandlines(run_fdf_path):
     lines = run_fdf_path.read_text(encoding='utf-8', errors='replace').splitlines()
     in_block = False
@@ -339,116 +354,14 @@ def read_bandlines(run_fdf_path):
     return points
 
 
-
-
-def read_pdos_atom_positions(pdos_path):
-    atom_positions = {}
-    root = ET.parse(pdos_path).getroot()
-
-    for orbital in root.findall('orbital'):
-        atom_index = int(orbital.attrib['atom_index'])
-        if atom_index in atom_positions:
-            continue
-        atom_positions[atom_index] = np.array(
-            [float(value) for value in orbital.attrib['position'].split()],
-            dtype=float,
-        ) * BOHR_TO_ANG
-
-    return atom_positions
-
-
-def read_struct_atom_positions(struct_path):
-    atom = read_structure(str(struct_path))
-    positions = np.array(atom.xyz, dtype=float)
-    return {index: positions[index - 1] for index in range(1, len(positions) + 1)}
-
-
-def find_struct_fdf(case_dir, output_dir=None):
-    case_dir = Path(case_dir)
-    candidates = []
-    if output_dir is not None:
-        candidates.append(Path(output_dir) / 'STRUCT.fdf')
-    candidates.extend([case_dir / 'output' / 'STRUCT.fdf', case_dir / 'input' / 'STRUCT.fdf'])
-    for path in candidates:
-        if path.is_file():
-            return path
-    return None
-
-
-
-
-
-
-def build_orbital_info(metadata, atom_positions):
-    info = []
-
-    for index in range(metadata['norb']):
-        atom_index = int(metadata['atom_indices'][index])
-        if atom_index not in atom_positions:
-            raise ValueError(f'missing atom position for atom [{atom_index}]')
-
-        orbital_name = metadata['orbital_names'][index]
-        if not orbital_name:
-            raise ValueError(f'missing orbital name for orbital [{index + 1}]')
-
-        info.append(
-            {
-                'symbol': metadata['symbols'][index],
-                'n': int(metadata['nvalues'][index]),
-                'l': orbital_name[0],
-                'name': orbital_name,
-                'atom_index': atom_index,
-                'position': np.array(atom_positions[atom_index], dtype=float),
-            }
-        )
-
-    return info
-
-
 def get_groups(metadata, selectors, atom_positions):
-    orbital_info = build_orbital_info(metadata, atom_positions)
-    groups = get_selector_groups(orbital_info, selectors, 'symbol')
-    if COMBINE_SELECTED_GROUPS and selectors:
-        indices = []
-        for group_indices in groups.values():
-            indices.extend(group_indices)
-        groups = OrderedDict(
-            [(COMBINED_GROUP_LABEL, np.array(sorted(set(indices)), dtype=int))]
-        )
-    return groups
+    return data.get_groups(metadata, selectors, atom_positions,
+                           combine=COMBINE_SELECTED_GROUPS, combined_label=COMBINED_GROUP_LABEL)
 
 
 def get_weight_normalization_factors(metadata, groups, atom_positions):
-    if WEIGHT_NORMALIZATION == 'none':
-        return {label: 1 for label in groups}
-
-    if WEIGHT_NORMALIZATION == 'cell':
-        cell_atom_count = len(atom_positions)
-        if cell_atom_count < 1:
-            raise ValueError('cannot normalize weights per cell atom without STRUCT.fdf atom positions')
-        return {label: cell_atom_count for label in groups}
-
-    atom_indices = np.asarray(metadata['atom_indices'], dtype=int)
-    factors = {}
-    for label, orbital_indices in groups.items():
-        selected_atoms = np.unique(atom_indices[orbital_indices])
-        if len(selected_atoms) < 1:
-            raise ValueError(f'cannot normalize empty orbital group [{label}] per atom')
-        factors[label] = len(selected_atoms)
-    return factors
-
-
-def build_kdist(kpoints):
-    if len(kpoints) == 0:
-        return np.array([], dtype=float)
-    if len(kpoints) == 1:
-        return np.array([0.0], dtype=float)
-    steps = np.linalg.norm(np.diff(kpoints, axis=0), axis=1)
-    return np.concatenate(([0.0], np.cumsum(steps)))
-
-
-
-
+    return data.get_weight_normalization_factors(metadata, groups, atom_positions,
+                                                  normalization=WEIGHT_NORMALIZATION)
 
 
 def resolve_band_energy_reference(output_dir, run_fdf_path, fermi):
@@ -469,16 +382,7 @@ def resolve_band_energy_reference(output_dir, run_fdf_path, fermi):
 
 
 def get_group_color_map(labels, spin_index=None):
-    labels = list(labels)
-    colors = GROUP_COLORS
-    if spin_index is not None:
-        colors = SPIN_GROUP_COLORS.get(spin_index, GROUP_COLORS)
-
-    if colors is None:
-        return get_color_map(labels)
-    if len(colors) == 0:
-        raise ValueError('group color lists should not be empty; use None for the default palette')
-    return {label: colors[index % len(colors)] for index, label in enumerate(labels)}
+    return plotting.group_color_map(labels, spin_index, _plot_style())
 
 
 def get_spin_output_path(output_png, spin_option, nspin):
@@ -489,206 +393,29 @@ def get_spin_output_path(output_png, spin_option, nspin):
 
 
 def read_fatband_data(case_dir, output_dir, run_fdf_path, wfsx_path, selectors):
-    metadata = read_wfsx_metadata(wfsx_path)
-    atom_positions = {}
-
-    struct_path = find_struct_fdf(case_dir, output_dir)
-    if WEIGHT_NORMALIZATION == 'cell' and struct_path is None:
-        raise ValueError('cell weight normalization requires STRUCT.fdf')
-    if struct_path is not None:
-        atom_positions.update(read_struct_atom_positions(struct_path))
-
-    pdos_path = get_output_file_path(str(output_dir), str(run_fdf_path), '.PDOS.xml')
-    if pdos_path is not None and not atom_positions:
-        atom_positions.update(read_pdos_atom_positions(Path(pdos_path)))
-
-    groups = get_groups(metadata, selectors, atom_positions)
-    normalization_factors = get_weight_normalization_factors(metadata, groups, atom_positions)
-    spin_series = read_wfsx_series(wfsx_path, groups, metadata['nspin'])
-    spin_plots = []
-
-    for spin_index, series in spin_series.items():
-        eig_blocks = series['eig_blocks']
-        if len(eig_blocks) == 0:
-            continue
-
-        kpoints = np.array(series['kpoints'], dtype=float)
-        kdist = build_kdist(kpoints)
-        nbands = len(eig_blocks[0])
-        data = OrderedDict()
-        for label in groups:
-            weight = np.concatenate(series['weight_blocks'][label])
-            weight = weight / normalization_factors[label]
-            data[label] = {
-                'x': np.repeat(kdist, nbands),
-                'y': np.concatenate(eig_blocks),
-                'w': weight,
-            }
-        spin_plots.append((spin_index, data, kdist))
-
-    if len(spin_plots) == 0:
-        raise ValueError(f'no WFSX eigenstate blocks in [{wfsx_path}]')
-
-    return metadata['nspin'], spin_plots
-
-
-def read_plain_band_data(wfsx_path):
-    metadata = read_wfsx_metadata(wfsx_path)
-    groups = OrderedDict([('all', np.arange(metadata['norb'], dtype=int))])
-    spin_series = read_wfsx_series(wfsx_path, groups, metadata['nspin'])
-    spin_plots = []
-
-    for spin_index, series in spin_series.items():
-        eig_blocks = series['eig_blocks']
-        if len(eig_blocks) == 0:
-            continue
-
-        kpoints = np.array(series['kpoints'], dtype=float)
-        kdist = build_kdist(kpoints)
-        spin_plots.append((spin_index, np.vstack(eig_blocks), kdist))
-
-    if len(spin_plots) == 0:
-        raise ValueError(f'no WFSX eigenstate blocks in [{wfsx_path}]')
-
-    return metadata['nspin'], spin_plots
+    return data.read_fatband_data(case_dir, output_dir, run_fdf_path, wfsx_path, selectors,
+                                  combine=COMBINE_SELECTED_GROUPS, combined_label=COMBINED_GROUP_LABEL,
+                                  normalization=WEIGHT_NORMALIZATION)
 
 
 def style_axes(ax, kdist, tick_positions, tick_labels, energy_reference_label):
-    ax.tick_params(
-        which='both',
-        direction='in',
-        top=False,
-        right=False,
-        labelsize=TICK_SIZE,
-        width=TICK_WIDTH,
-        length=TICK_LENGTH,
-    )
-    if HIDE_TICK_AND_AXIS_LABELS:
-        ax.tick_params(axis='both', labelbottom=False, labelleft=False)
-        ax.set_xlabel('')
-        ax.set_ylabel('')
-    else:
-        ax.set_xlabel('k-path', fontsize=LABEL_SIZE)
-        ax.set_ylabel(f'Energy - {energy_reference_label} (eV)', fontsize=LABEL_SIZE)
-    ax.set_ylim(*ENERGY_RANGE)
-    if ENERGY_TICK_COUNT is not None:
-        if ENERGY_TICK_COUNT < 2:
-            raise ValueError('ENERGY_TICK_COUNT should be at least 2 or None')
-        ax.set_yticks(np.linspace(ENERGY_RANGE[0], ENERGY_RANGE[1], ENERGY_TICK_COUNT))
-
-    if len(kdist) > 0:
-        ax.set_xlim(float(kdist[0]), float(kdist[-1]))
-
-    if tick_positions:
-        ax.set_xticks(tick_positions)
-        ax.set_xticklabels(tick_labels)
-        for xpos in tick_positions:
-            ax.axvline(x=xpos, color='0.85', linewidth=0.7, zorder=0)
-    else:
-        ax.set_xticks([])
-
-    for spine in ax.spines.values():
-        spine.set_linewidth(AXIS_LINEWIDTH)
-
-    ax.axhline(y=0.0, color='0.55', linewidth=LINEWIDTH, zorder=0)
+    return plotting.style_axes(ax, kdist, tick_positions, tick_labels, energy_reference_label, _plot_style())
 
 
-def plot_fatband(
-    output_png,
-    spin_items,
-    merge_spins,
-    reference_energy,
-    energy_reference_label,
-    kdist,
-    tick_positions,
-    tick_labels,
-):
-    fig, ax = plt.subplots(figsize=(WIDTH, HEIGHT))
-    ymin, ymax = ENERGY_RANGE
-    plotted = 0
-    plotted_labels = set()
-
-    for spin_index, data in spin_items:
-        color_spin_index = None if merge_spins else spin_index
-        color_map = get_group_color_map(data.keys(), color_spin_index)
-        for label, series in data.items():
-            x = series['x']
-            y = series['y'] - reference_energy
-            w = series['w']
-            mask = (y >= ymin) & (y <= ymax) & (w > WEIGHT_TOL)
-            if not np.any(mask):
-                continue
-
-            # Keep energy on the vertical axis and k-path on the horizontal axis.
-            size = np.maximum(w[mask], WEIGHT_TOL) * MARKER_SCALE
-            plot_label = label
-            if merge_spins and label in plotted_labels:
-                plot_label = '_nolegend_'
-            ax.scatter(
-                x[mask],
-                y[mask],
-                s=size,
-                color=color_map[label],
-                alpha=ALPHA,
-                linewidths=0.0,
-                label=plot_label,
-            )
-            plotted_labels.add(label)
-            plotted += 1
-
-    style_axes(ax, kdist, tick_positions, tick_labels, energy_reference_label)
-    if SHOW_LEGEND and plotted:
-        ax.legend(frameon=False, fontsize=TICK_SIZE, loc='upper right')
-    fig.tight_layout()
-    fig.savefig(output_png, dpi=DPI, transparent=True)
-    plt.close(fig)
-
-    return plotted
+def plot_fatband(*args, **kwargs):
+    return plotting.plot_fatband(*args, **kwargs, style=_plot_style())
 
 
 def get_band_color(spin_index, merge_spins):
-    if not merge_spins:
-        colors = SPIN_GROUP_COLORS.get(spin_index, GROUP_COLORS)
-        if colors:
-            return colors[0]
-    if GROUP_COLORS:
-        return GROUP_COLORS[0]
-    return 'k'
+    return plotting.band_color(spin_index, merge_spins, _plot_style())
 
 
 def get_band_linewidth():
-    return BASE_BAND_LINEWIDTH * MARKER_SCALE / DEFAULT_MARKER_SCALE
+    return plotting.band_linewidth(_plot_style())
 
 
-def plot_band(
-    output_png,
-    spin_items,
-    merge_spins,
-    reference_energy,
-    energy_reference_label,
-    kdist,
-    tick_positions,
-    tick_labels,
-):
-    fig, ax = plt.subplots(figsize=(WIDTH, HEIGHT))
-    ymin, ymax = ENERGY_RANGE
-    plotted = 0
-
-    for spin_index, eig_matrix in spin_items:
-        color = get_band_color(spin_index, merge_spins)
-        for band_index in range(eig_matrix.shape[1]):
-            y = eig_matrix[:, band_index] - reference_energy
-            if not np.any((y >= ymin) & (y <= ymax)):
-                continue
-            ax.plot(kdist, y, color=color, linewidth=get_band_linewidth())
-            plotted += 1
-
-    style_axes(ax, kdist, tick_positions, tick_labels, energy_reference_label)
-    fig.tight_layout()
-    fig.savefig(output_png, dpi=DPI, transparent=True)
-    plt.close(fig)
-
-    return plotted
+def plot_band(*args, **kwargs):
+    return plotting.plot_band(*args, **kwargs, style=_plot_style())
 
 
 def is_direct_output_dir(path):
