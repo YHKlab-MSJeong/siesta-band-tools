@@ -79,6 +79,37 @@ def draw_bands(ax, kdist, energy, *, reference_energy=0., energy_range=(-3., 3.)
     return plotted
 
 
+def draw_pdos(ax, energy, values, *, reference_energy=0., color='k'):
+    """Draw a one-dimensional selected PDOS on an existing axes."""
+    energy = np.asarray(energy, dtype=float)
+    values = np.asarray(values, dtype=float)
+    if (energy.ndim != 1 or values.shape != energy.shape or len(energy) < 2
+            or not np.isfinite(energy).all() or not np.isfinite(values).all()
+            or not np.isfinite(reference_energy)):
+        raise ValueError('energy and PDOS must be finite one-dimensional arrays of equal length')
+    return ax.plot(energy - reference_energy, values, color=color)[0]
+
+
+def plot_pdos(output, energy, values, *, reference_energy=0., reference_label='Fermi',
+              energy_range=None, figsize=(5., 3.5), dpi=280, color='k'):
+    """Render a selected PDOS; energy is plotted on the horizontal axis."""
+    fig, ax = plt.subplots(figsize=figsize)
+    try:
+        draw_pdos(ax, energy, values, reference_energy=reference_energy, color=color)
+        if energy_range is not None:
+            if (len(energy_range) != 2 or not np.isfinite(energy_range).all()
+                    or energy_range[0] >= energy_range[1]):
+                raise ValueError('energy_range must contain finite MIN < MAX')
+            ax.set_xlim(*energy_range)
+        ax.set_xlabel(f'Energy - {reference_label} (eV)')
+        ax.set_ylabel('PDOS (states/eV per spin)')
+        ax.axvline(0., color='0.55', linewidth=.5)
+        fig.tight_layout()
+        fig.savefig(output, dpi=dpi, transparent=True, format='png')
+    finally:
+        plt.close(fig)
+
+
 def group_color_map(labels, spin_index, style):
     labels = list(labels)
     colors = style.group_colors

@@ -61,12 +61,14 @@ class CLITests(unittest.TestCase):
     def test_help_and_invalid_commands(self):
         for args, expected in [(['--help'], 'calculate'), (['calculate', '--help'], 'TSHS'),
                                (['plot', '--help'], 'NPZ'), (['wfsx', '--help'], 'plot'),
-                               (['wfsx', 'plot', '--help'], 'siesta-band wfsx plot')]:
+                               (['wfsx', 'plot', '--help'], 'siesta-band wfsx plot'),
+                               (['pdos', '--help'], 'calculate'), (['pdos', 'calculate', '--help'], 'k-grid'),
+                               (['pdos', 'plot', '--help'], 'ORB_INDX')]:
             result = subprocess.run([sys.executable, '-m', 'siesta_band_tools.cli', *args],
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(expected, result.stdout)
-        for args in ([], ['bad'], ['wfsx'], ['wfsx', 'bad']):
+        for args in ([], ['bad'], ['wfsx'], ['wfsx', 'bad'], ['pdos'], ['pdos', 'bad']):
             result = subprocess.run([sys.executable, '-m', 'siesta_band_tools.cli', *args],
                                     capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)

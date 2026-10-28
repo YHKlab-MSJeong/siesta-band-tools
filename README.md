@@ -1,8 +1,8 @@
 # SIESTA band tools
 
-Calculate and plot **supercell** bands from a saved SIESTA TSHS Hamiltonian
-using sisl. As an additional feature, plot SIESTA WFSX bands and fatbands.
-This package does not perform band unfolding.
+Calculate and plot **supercell** bands and projected DOS from a saved SIESTA
+TSHS Hamiltonian using sisl. As an additional feature, plot SIESTA WFSX bands
+and fatbands. This package does not perform band unfolding.
 
 ## Installation
 
@@ -48,6 +48,51 @@ be verified against that calculation's SIESTA source and EIG output.
 
 For command-line help, use `siesta-band --help`, `siesta-band calculate --help`,
 or `siesta-band plot --help`.
+
+## Calculate and plot PDOS from TSHS
+
+Specify the full supercell Brillouin-zone mesh and an energy range relative to
+the TSHS Fermi energy. The numbers below are examples, not convergence
+recommendations:
+
+```sh
+siesta-band pdos calculate model.TSHS pdos.npz --kgrid 7 1 5 -er -3 3 --points 1201 --sigma 0.05
+siesta-band pdos plot pdos.npz total_pdos.png
+siesta-band pdos plot pdos.npz atom_pdos.png --atom 1 2
+```
+
+The full Monkhorst-Pack grid is centered with no time-reversal reduction;
+`--kshift` optionally supplies a displacement in fractional supercell
+reciprocal coordinates. `--sigma` is the Gaussian standard deviation in eV.
+Choose and converge the grid, energy limits and broadening for your system;
+the high-symmetry band path is not a Brillouin-zone integral.
+
+TSHS alone gives the Hamiltonian, overlap, atom positions and orbital ordering;
+it does **not** reliably identify element and orbital names. For name-based
+selection, supply the matching SIESTA ORB_INDX during calculation:
+
+```sh
+siesta-band pdos calculate model.TSHS pdos_labeled.npz --kgrid 7 1 5 -er -3 3 --orb-indx model.ORB_INDX
+siesta-band pdos plot pdos_labeled.npz W_layer.png --element W --orbital 5d --axis y --coordinate 23.6 --tolerance 1.5
+```
+
+Atom indices are 1-based. All selection filters are intersected; axis and
+coordinate must be supplied together and are in Angstrom. ORB_INDX atom/orbital
+counts and order are checked against TSHS, but matching counts alone do not
+prove that the files came from the same calculation. Without ORB_INDX, use
+atom indices or coordinates instead of element/orbital names.
+
+PDOS is the overlap-aware Mulliken orbital projection from sisl, in states/eV
+**per spin and per supercell** for an unpolarized Hamiltonian; no factor of two is applied.
+Individual nonorthogonal orbital contributions need not all be positive.
+Spin-polarized and spin-orbit Hamiltonians are not supported by this command.
+The NPZ stores orbital-resolved PDOS, absolute energies, TSHS Fermi energy,
+atom mapping/positions, k-points/weights and calculation metadata. Plots use
+TSHS Fermi energy by default; `--reference` sets a different absolute energy
+in eV. To compare with SIESTA PDOS, match k-grid, smearing, energy reference,
+spin normalization and projection conventions. The NPZ and PNG destinations
+must be new files. See `siesta-band pdos calculate --help` and
+`siesta-band pdos plot --help` for options.
 
 ## Plot bands from WFSX
 
@@ -121,6 +166,23 @@ The `siesta_band_tools.data` module also exposes the WFSX band preparation
 functions separately from rendering. `siesta_band_tools.plotting.PlotStyle`,
 `plot_band`, and `plot_fatband` provide the standard PNG style without using
 the command-line plotter's global settings.
+
+Calculate and select orbital PDOS in Python:
+
+```python
+import numpy as np
+from siesta_band_tools.pdos import calculate_pdos, select_orbitals
+
+result = calculate_pdos("model.TSHS", kgrid=[7, 1, 5], energy_range=[-3, 3],
+                        points=1201, sigma=0.05, orbital_index="model.ORB_INDX")
+indices = select_orbitals(result, element="W", orbital="5d")
+W_d_pdos = result["pdos_per_spin"][indices].sum(axis=0)
+with open("pdos_python.npz", "xb") as output:
+    np.savez_compressed(output, **result)
+```
+
+Use `siesta_band_tools.plotting.draw_pdos` to draw the selected PDOS on a
+Matplotlib axes.
 
 As an additional feature, read WFSX metadata in your own script:
 

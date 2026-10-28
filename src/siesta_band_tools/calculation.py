@@ -36,8 +36,8 @@ def make_path(vertices, intervals, cell):
     return points, distance, ticks
 
 
-def calculate(tshs, vertices, intervals, *, legacy_siesta_units=False):
-    """Return absolute energies in eV. TSHS fractional coordinates use supercell reciprocal vectors.
+def read_hamiltonian(tshs, *, legacy_siesta_units=False):
+    """Read a TSHS Hamiltonian and Fermi offset using the selected source units.
 
     The legacy-unit switch applies only to known SIESTA binaries built with
     Bohr=0.529177 Ang and Ry=13.60580 eV. sisl conversion constants are
@@ -60,6 +60,13 @@ def calculate(tshs, vertices, intervals, *, legacy_siesta_units=False):
     finally:
         for key, value in old.items():
             setattr(binary, key, value)
+    return H, offset
+
+
+def calculate(tshs, vertices, intervals, *, legacy_siesta_units=False):
+    """Return absolute energies in eV. TSHS fractional coordinates use supercell reciprocal vectors."""
+    import sisl
+    H, offset = read_hamiltonian(tshs, legacy_siesta_units=legacy_siesta_units)
     if H.spin.kind != 0:
         raise ValueError('TSHS calculation currently supports only unpolarized Hamiltonians')
     k, distance, ticks = make_path(vertices, intervals, H.geometry.cell)

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "siesta-band-tools"
-version = "0.2.0"
-description = "Read, calculate and plot SIESTA electronic bands"
+version = "0.3.0"
+description = "Calculate and plot SIESTA TSHS bands and projected DOS"
 requires-python = ">=3.9"
 dependencies = ["numpy>=1.24,<2", "scipy>=1.10,<1.15", "matplotlib>=3.7,<3.10", "sisl==0.14.3"]
 
